@@ -1,0 +1,424 @@
+---
+title: "ADPS 21Z --- Ćwiczenie 4 - rozwiązania"
+author: "Ola Jaglińska"
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document: default
+  html_notebook: default
+papersize: a4
+---
+
+```{r, echo=FALSE}
+pdf.options(encoding='ISOLatin2')
+```
+
+# Zadanie 1
+
+## Treść zadania
+
+Korzystając z metod analizy wariancji (przy założeniu normalności rozkładów oraz bez tego założenia), dla wybranej spółki notowanej na GPW zweryfikuj hipotezę o równości wartości średnich procentowych zmian cen zamknięcia
+
+* porównując średnie w ostatnich sześciu miesiącach,
+
+* porównując średnie w ostatnich trzech miesiącach.
+
+Wskazówki:
+
+* obliczenie procentowych zmian cen zamknięcia:
+
+dane$close_ch = with(dane, c(NA, 100*diff(close)/close[-length(close)]))
+
+* przykładowy sposób wczytania danych dot. np. czerwca 2021:
+
+x1 = with(dane, close_ch[format(date, '%Y-%m') == '2021-06'])
+
+## Rozwiązanie
+
+W zadaniach zakładam poziom istotności na poziomie 0.05
+
+```{r}
+unzip('mstall.zip', 'DATAWALK.mst')
+datawalk = read.csv('DATAWALK.mst')
+names(datawalk) = c('ticker', 'date', 'open', 'high', 'low', 'close','vol')
+datawalk$date = as.Date.character(datawalk$date, format ='%Y%m%d')
+datawalk$close_ch = with(datawalk, c(NA, 100*diff(close)/close[-length(close)]))
+z1_x1 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-06'])
+z1_x2 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-07'])
+z1_x3 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-08'])
+z1_x4 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-09'])
+z1_x5 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-10'])
+z1_x6 = with(datawalk, close_ch[format(date, '%Y-%m') == '2021-11'])
+```
+
+* porównanie średnich w ostatnich sześciu miesiącach
+
+```{r}
+boxplot(z1_x1, z1_x2, z1_x3, z1_x4, z1_x5, z1_x6)
+grid()
+```
+
+```
+datawalk_anova1 = data.frame( datawalk = c(z1_x1, z1_x2, z1_x3, z1_x4, z1_x5, z1_x6),
+          proba1 = rep( c('z1_x1', 'z1_x2', 'z1_x3', 'z1_x4', 'z1_x5', 'z1_x6'), 
+          times1 = c(length(z1_x1), length(z1_x2), length(z1_x3), length(z1_x4), length(z1_x5), length(z1_x6))) )
+```
+Tu mam błąd z powodu różnej ilości wierszy w poszczególnych kolumnach. Nie zdążyłam znaleźć rozwiązania w R, ale wyrównałabym ilość wierszy przy pomocy uzupełniania braków danych 'NA'
+
+Analiza wariancji dla sześciu miesięcy przy założeniu normalności rozkładów:
+```
+z1_aov_res1 = aov(datawalk~proba1, data = datawalk_anova1)
+summary(z1_aov_res1)
+```
+Zakładam wartość alfa = 0.05. Wysoka p-wartość = 0.565 - nie mogę odrzucić hipotezy zerowej o równości średnich procentowych zmian cen zamknięcia.
+
+Analiza wariancji dla sześciu miesięcy bez zakładania normalności rozkładów - test Kruskala-Wallisa:
+```
+kruskal.test(datawalk~proba1, data = datawalk_anova1)
+```
+Wysoka p-wartość = 0.7518 - nie mogę odrzucić hipotezy zerowej.
+
+* porównanie średnich w ostatnich trzech miesiącach
+
+```{r}
+boxplot(z1_x4, z1_x5, z1_x6)
+grid()
+```
+```{r}
+datawalk_anova2 = data.frame(datawalk = c(z1_x4, z1_x5, z1_x6),
+          proba2 = rep( c('z1_x4', 'z1_x5', 'z1_x6'), 
+          times2 = c(length(z1_x4), length(z1_x5), length(z1_x6))) )
+```
+
+Analiza wariancji dla trzech miesięcy przy założeniu normalności rozkładów:
+```{r}
+z1_aov_res2 = aov(datawalk~proba2, data = datawalk_anova2)
+summary(z1_aov_res2)
+```
+Zakładam wartość alfa = 0.05. Wysoka p-wartość = 0.29 - nie mogę odrzucić hipotezy zerowej o równości średnich procentowych zmian cen zamknięcia.
+
+Analiza wariancji dla trzech miesięcy bez zakładania normalności rozkładów - test Kruskala-Wallisa:
+```{r}
+kruskal.test(datawalk~proba2, data = datawalk_anova2)
+```
+Wysoka p-wartość = 0.3825 - nie mogę odrzucić hipotezy zerowej.
+
+
+***
+
+# Zadanie 2
+
+## Treść zadania
+
+* Korzystając z regresji liniowej wyznacz zależność indeksu WIG20 (na zamknięciu notowań) od kursów zamknięcia spółek AMICA, COMARCH, GETIN, PEKAO, PGNIG, PZU dla danych z trzeciego kwartału roku 2021.
+
+* Oceń istotność poszczególnych zmiennych objaśniających w tak skonstruowanym modelu.
+
+* Przeprowadź analogiczne analizy w przypadku uwzględnienia w modelu mniejszej ilości spółek: AMICA, COMARCH, GETIN.
+
+## Rozwiązanie
+```{r}
+read_mst = function(plik_zip, plik_mst) {
+unzip(plik_zip, plik_mst)
+dane = read.csv(plik_mst)
+names(dane) = c('ticker', 'date', 'open', 'high', 'low', 'close', 'vol')
+dane$date = as.Date.character(dane$date,format = '%Y%m%d')
+dane }
+```
+
+```{r}
+if(!file.exists('mstall.zip')) {
+  download.file('http://info.bossa.pl/pub/metastock/mstock/mstall.zip','mstall.zip')
+}
+```
+
+Wczytuje dane spółek:
+```{r}
+dane = read_mst('mstall.zip', 'WIG20.mst')
+WIG20_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(WIG20_df) = c('date','WIG20')
+
+dane = read_mst('mstall.zip', 'AMICA.mst')
+AMICA_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(AMICA_df) = c('date','AMICA')
+
+dane = read_mst('mstall.zip', 'COMARCH.mst')
+COMARCH_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(COMARCH_df) = c('date', 'COMARCH')
+
+dane = read_mst('mstall.zip', 'GETIN.mst')
+GETIN_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(GETIN_df) = c('date', 'GETIN')
+
+dane = read_mst('mstall.zip', 'PEKAO.mst')
+PEKAO_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(PEKAO_df) = c('date', 'PEKAO')
+
+dane = read_mst('mstall.zip', 'PGNIG.mst')
+PGNIG_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(PGNIG_df) = c('date', 'PGNIG')
+
+dane = read_mst('mstall.zip', 'PZU.mst')
+PZU_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(PZU_df) = c('date', 'PZU')
+```
+
+
+Łączę dane w jedną ramkę:
+```{r}
+WIG20_all = merge(WIG20_df, AMICA_df, by = 'date')
+WIG20_all = merge(WIG20_all, COMARCH_df, by = 'date')
+WIG20_all = merge(WIG20_all, GETIN_df, by = 'date')
+WIG20_all = merge(WIG20_all, PEKAO_df, by = 'date')
+WIG20_all = merge(WIG20_all, PGNIG_df, by = 'date')
+WIG20_all = merge(WIG20_all, PZU_df, by = 'date')
+```
+
+Metoda regresji liniowej za pomocą funkcji lm:
+```{r}
+lm_res = lm(WIG20 ~ AMICA + COMARCH + GETIN + PEKAO + PGNIG + PZU, data = WIG20_all)
+summary(lm_res)
+```
+W przypadku spółki CORMACH i PEKAO p-wartość jest bardzo niska hipoteza zerowa powinna zostać odrzucona. Wartość ich współczynników jest istotna.
+Dla spółek AMICA, GETIN, PGNNIG i PZU p-wartość jest większa od 0.05 i nie możemy odrzucić hipotezy zerowej o zależności WIG20 od kursów zamknięcia tych spółek.
+
+Metoda regresji liniowej za pomocą funkcji lm dla mniejszej ilości spółek:
+```{r}
+lm_res = lm(WIG20 ~ AMICA + COMARCH + GETIN, data = WIG20_all)
+summary(lm_res)
+```
+W przypadku spółki CORMACH i GETIN p-wartość jest bardzo niska hipoteza zerowa powinna zostać odrzucona. Wartość och współczynników jest istotna.
+Dla spółkI AMICA p-wartość jest większa od 0.05 i nie możemy odrzucić hipotezy zerowej.
+
+***
+
+# Zadanie 3
+
+## Treść zadania
+
+Korzystając z regresji liniowej dla danych z trzeciego kwartału roku 2021 zbadaj:
+
+* zależność kursu zamknięcia CHF od kursów zamknięcia EUR, USD, GBP, JPY (dane w pliku mstnbp.zip),
+
+* zależność kursu zamknięcia CDPROJEKT (mstall.zip) od kursów zamknięcia CHF, EUR, USD, GBP, JPY (mstnbp.zip),
+
+* zależność kursu zamknięcia kontraktu terminowego (futures) FPZUZ21 (PZU na grudzień 2021, dane w pliku mstfut.zip) od kursów zamknięcia PZU, PEKAO, ALIOR (mstall.zip).
+
+Wskazówka: 
+
+* pobranie plików mstnbp.zip i mstfut.zip:
+
+```{r}
+if(!file.exists('mstnbp.zip')) {
+  download.file('https://info.bossa.pl/pub/metastock/waluty/mstnbp.zip','mstnbp.zip')
+}
+if(!file.exists('mstfut.zip')) {
+  download.file('https://info.bossa.pl/pub/metastock/futures/mstfut.zip','mstfut.zip')
+}
+```
+
+## Rozwiązanie
+
+* zależność kursu zamknięcia CHF od kursów zamknięcia EUR, USD, GBP, JPY (dane w pliku mstnbp.zip)
+```{r}
+kurs = read_mst('mstnbp.zip', 'CHF.mst')
+CHF_df = subset(kurs, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(CHF_df) = c('date','CHF')
+
+kurs = read_mst('mstnbp.zip', 'EUR.mst')
+EUR_df = subset(kurs, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(EUR_df) = c('date','EUR')
+
+kurs = read_mst('mstnbp.zip', 'USD.mst')
+USD_df = subset(kurs, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(USD_df) = c('date', 'USD')
+
+kurs = read_mst('mstnbp.zip', 'GBP.mst')
+GBP_df = subset(kurs, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(GBP_df) = c('date', 'GBP')
+
+kurs = read_mst('mstnbp.zip', 'JPY.mst')
+JPY_df = subset(kurs, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(JPY_df) = c('date', 'JPY')
+```
+Wspólna ramka danych:
+```{r}
+CHF_all = merge(CHF_df, EUR_df, by = 'date')
+CHF_all = merge(CHF_all, USD_df, by = 'date')
+CHF_all = merge(CHF_all, GBP_df, by = 'date')
+CHF_all = merge(CHF_all, JPY_df, by = 'date')
+```
+Metoda regresji liniowej za pomocą funkcji lm:
+```{r}
+lm_res = lm(CHF ~ EUR + USD + GBP + JPY, data = CHF_all)
+summary(lm_res)
+```
+P-wartość przy kursach GBP i JPY jest niska - odrzucam hipotezę zerową. Wartość ich współczynników jest istotna.
+Dla kursów EUR i USD p-wartość jest większa od 0.05 i nie możemy odrzucić hipotezy zerowej o zależności kursu zamknięcia CHF od kursów zamkniecia EUR i USD.
+
+* zależność kursu zamknięcia CDPROJEKT (mstall.zip) od kursów zamknięcia CHF, EUR, USD, GBP, JPY (mstnbp.zip),
+```{r}
+dane = read_mst('mstall.zip', 'CDPROJEKT.mst')
+CDPROJEKT_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(CDPROJEKT_df) = c('date','CDPROJEKT')
+```
+```{r}
+CDPROJEKT_all = merge(CDPROJEKT_df, CHF_df, by = 'date')
+CDPROJEKT_all = merge(CDPROJEKT_all, EUR_df, by = 'date')
+CDPROJEKT_all = merge(CDPROJEKT_all, USD_df, by = 'date')
+CDPROJEKT_all = merge(CDPROJEKT_all, GBP_df, by = 'date')
+CDPROJEKT_all = merge(CDPROJEKT_all, JPY_df, by = 'date')
+```
+```{r}
+lm_res = lm(CDPROJEKT ~ CHF+ EUR + USD + GBP + JPY, data = CDPROJEKT_all)
+summary(lm_res)
+```
+P-wartość przy kursach CHF, EUR i USD jest niska - odrzucam hipotezę zerową. Wartość ich współczynników jest istotna.
+Dla kursów GBP i JPY p-wartość jest większa od 0.05 i nie możemy odrzucić hipotezy zerowej o zależności kursu zamknięcia spółki CDPROJEKT od kursów zamkniecia GBP i JPY.
+
+
+* zależność kursu zamknięcia kontraktu terminowego (futures) FPZUZ21 (PZU na grudzień 2021, dane w pliku mstfut.zip) od kursów zamknięcia PZU, PEKAO, ALIOR (mstall.zip).
+```{r}
+dane = read_mst('mstfut.zip', 'FPZUZ21.mst')
+FPZUZ21_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(FPZUZ21_df) = c('date','FPZUZ21')
+
+dane = read_mst('mstall.zip', 'PZU.mst')
+PZU_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(PZU_df) = c('date', 'PZU')
+
+dane = read_mst('mstall.zip', 'PEKAO.mst')
+PEKAO_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(PEKAO_df) = c('date', 'PEKAO')
+
+dane = read_mst('mstall.zip', 'ALIOR.mst')
+ALIOR_df = subset(dane, date >= '2021-07-01' & date <= '2021-09-30', select = c('date', 'close'))
+names(ALIOR_df) = c('date','ALIOR')
+```
+```{r}
+FPZUZ21_all = merge(FPZUZ21_df, PZU_df, by = 'date')
+FPZUZ21_all = merge(FPZUZ21_all, PEKAO_df, by = 'date')
+FPZUZ21_all = merge(FPZUZ21_all, ALIOR_df, by = 'date')
+```
+```{r}
+lm_res = lm(FPZUZ21 ~ PZU + PEKAO + ALIOR , data = FPZUZ21_all)
+summary(lm_res)
+```
+P-wartość przy kursach PZU i ALIOR jest niska - odrzucam hipotezę zerową. Wartość ich współczynników jest istotna.
+Dla kursu PEKAO p-wartość jest większa od 0.05 i nie możemy odrzucić hipotezy zerowej o zależności kursu zamknięcia kontraktu terminowego od kursu zamkniecia PEKAO.
+
+
+***
+
+# Zadanie 4
+
+## Treść zadania
+
+W pliku sprzedaz.txt znajdują się dane dotyczące wydatków na reklamę pewnej firmy (w tys. zł) i wartości sprzedaży jej produktów (w mln zł) w poszczególnych kwartałach.
+
+* Metodą regresji liniowej wyznacz zależność pomiędzy wartością sprzedaży a wydatkami na reklamę. Na jednym wykresie narysuj punkty odpowiadające danym oraz prostą regresji. 
+
+* Oblicz prognozowane wartości sprzedaży, jeśli wydatki na reklamę będą wynosiły: 300, 500, 700 tys. zł.
+
+* Oszacuj odchylenie standardowe błędu z jakim wyznaczono prognozowane wartości sprzedaży dla poszczególnych wartości wydatków na reklamę.
+
+## Rozwiązanie
+
+```{r}
+sprzedaz = read.csv('sprzedaz.txt')
+```
+
+* Metodą regresji liniowej wyznacz zależność pomiędzy wartością sprzedaży a wydatkami na reklamę. Na jednym wykresie narysuj punkty odpowiadające danym oraz prostą regresji. 
+```{r}
+lm_res_sprzedaz = lm(sprzedaz$Income ~ sprzedaz$Advert)
+summary(lm_res_sprzedaz)
+R2 = summary(lm_res_sprzedaz)$r.squared
+```
+Bardzo niska p-wartość wskazuje na odrzucenie hipotezy zerowej. 
+
+```{r}
+plot(sprzedaz$Advert, sprzedaz$Income, xlab = 'Advert', ylab = 'Income')
+abline(lm_res_sprzedaz, col = 'red')
+grid()
+```
+* Prognozowane wartości sprzedaży i szacowane odchylenie standardowe błędu z jakim wyznaczono prognozowane wartości sprzedaży dla wydatków na reklamę wynoszących 300 tys zł
+```{r}
+x_300 = 300
+y_300 = coef(lm_res_sprzedaz)[2]*x_300 + coef(lm_res_sprzedaz)[1] 
+```
+Prognozowana wartość sprzedaży przy wydatkach na reklamę 300 tys zł jest równa `r  round(y_300)`.
+
+Odchylenie standardowe błędu prognozy
+```{r}
+n_sprzedaz = length(sprzedaz$Advert)
+s2_300 = 1/(n_sprzedaz - 2)*sum((sprzedaz$Income - y_300)^2)
+s2_y_300 = s2_300*( 1 + 1/n_sprzedaz + (mean(sprzedaz$Advert) - x_300)^2/(n_sprzedaz*(mean(sprzedaz$Advert) - mean(sprzedaz$Advert)^2)) )
+s_y_300 = sqrt(s2_y_300)
+```
+Błąd predykcji wynosi: `r  round(s_y_300)`
+
+* Prognozowane wartości sprzedaży i szacowane odchylenie standardowe błędu z jakim wyznaczono prognozowane wartości sprzedaży dla wydatków na reklamę wynoszących 500 tys zł
+```{r}
+x_500 = 500
+y_500 = coef(lm_res_sprzedaz)[2]*x_500 + coef(lm_res_sprzedaz)[1] 
+```
+Prognozowana wartość sprzedaży przy wydatkach na reklamę 500 tys zł jest równa `r  round(y_500)`.
+
+Odchylenie standardowe błędu prognozy
+```{r}
+n_sprzedaz = length(sprzedaz$Advert)
+s2_500 = 1/(n_sprzedaz - 2)*sum((sprzedaz$Income - y_500)^2)
+s2_y_500 = s2_500*( 1 + 1/n_sprzedaz + (mean(sprzedaz$Advert) - x_500)^2/(n_sprzedaz*(mean(sprzedaz$Advert) - mean(sprzedaz$Advert)^2)) )
+s_y_500 = sqrt(s2_y_500)
+```
+Błąd predykcji wynosi: `r  round(s_y_500)`
+
+
+* Prognozowane wartości sprzedaży i szacowane odchylenie standardowe błędu z jakim wyznaczono prognozowane wartości sprzedaży dla wydatków na reklamę wynoszących 700 tys zł
+```{r}
+x_700 = 700
+y_700 = coef(lm_res_sprzedaz)[2]*x_700 + coef(lm_res_sprzedaz)[1] 
+```
+Prognozowana wartość sprzedaży przy wydatkach na reklamę 700 tys zł jest równa `r  round(y_700)`.
+
+Odchylenie standardowe błędu prognozy
+```{r}
+n_sprzedaz = length(sprzedaz$Advert)
+s2_700 = 1/(n_sprzedaz - 2)*sum((sprzedaz$Income - y_700)^2)
+s2_y_700 = s2_700*( 1 + 1/n_sprzedaz + (mean(sprzedaz$Advert) - x_700)^2/(n_sprzedaz*(mean(sprzedaz$Advert) - mean(sprzedaz$Advert)^2)) )
+s_y_700 = sqrt(s2_y_700)
+```
+Błąd predykcji wynosi: `r  round(s_y_700)`
+
+Z powyższych wyników wnioskuję, że najlepiej wypada średni model tj. wydatkina reklamę wynoszące 500 tys zł -> najniższy błąd.
+
+***
+
+# Zadanie 5 
+
+## Treść zadania
+
+* Dla danych z pliku sprzedaz.txt zbadaj czy lepszym modelem zależności między wartością wydatków na reklamę (w tys. zł) a wartością sprzedaży (w mln zł) byłaby zależność kwadratowa.
+
+* Nanieś odpowiednią linię przedstawiającą tę zależność na rysunek z danymi oraz prostą regresji wyznaczoną w poprzednim punkcie.
+
+## Rozwiązanie
+
+```{r}
+lm_res_sprzedaz2 = lm(sprzedaz$Income ~ I (sprzedaz$Advert^2))
+summary(lm_res_sprzedaz2)
+R22 = summary(lm_res_sprzedaz2)$r.squared
+
+plot(sprzedaz$Advert, sprzedaz$Income, xlab = 'Advert', ylab = 'Income')
+arg = seq(min(sprzedaz$Advert), max(sprzedaz$Advert), by = 1)
+y_est = coef(lm_res_sprzedaz)[2]*arg + coef(lm_res_sprzedaz)[1]
+y_est2 = coef(lm_res_sprzedaz2)[2]*arg^2 + coef(lm_res_sprzedaz2)[1]
+lines(arg, y_est, col = 'red')
+lines(arg, y_est2, col = 'blue')
+grid()
+legend('topleft', c('liniowa', 'kwadratowa'), col = c('red', 'blue'), lwd = 1)
+```
+W tym przypadku lepszym modelem jest model kwadratowy.
+
+
+***

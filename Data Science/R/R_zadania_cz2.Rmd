@@ -1,0 +1,231 @@
+---
+title: "Język R część 2 - zadania projektowe"
+author: "Ola Jaglińska"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_notebook: default
+  html_document: default
+---
+```{r, echo=FALSE}
+pdf.options(encoding='ISOLatin2')
+```
+
+## Zadanie 1
+
+Plik crypto.rds zawiera notowania wybranych kryptowalut.
+1.Wczytaj dane crypto.rds do R i zapoznaj się z nimi.
+```{r}
+kryptowaluty <- readRDS('./crypto.rds')
+saveRDS(kryptowaluty, file = './crypto.rds')
+str(kryptowaluty)
+```
+2.Wybierz z danych tylko te wiersze, które dotyczą Bitcoina.
+```{r}
+search()
+install.packages('tidyverse')
+library(magrittr)
+library(tidyverse)
+library(dplyr)
+```
+```{r}
+kryptowaluty %>% dplyr::select(tidyselect::contains("bitcoin"))
+```
+
+3.Pozostaw w danych tylko kolumny Date i Close.
+```{r}
+kryptowaluty %>% select(Date, Close)
+```
+4.Popraw kolumnę Date w taki sposób, aby była typu Date.
+```{r}
+kryptowaluty$Date <- as.Date(kryptowaluty$Date, format = "%b%d,%Y")
+class(kryptowaluty$Date)
+```
+
+5.Stwórz kolumnę Rate na podstawie kolumny Close zgodnie z następującą definicją()
+
+```{r}
+definition_Rate <- (kryptowaluty$Close - (kryptowaluty$Close-1))/(kryptowaluty$Close-1)
+kryptowaluty_new <- kryptowaluty %>% mutate(.data = kryptowaluty, Rate = definition_Rate, .after = Close)
+```
+
+
+6.Posortuj dane według kolumny Rate w porządku malejącym.
+```{r}
+kryptowaluty_new %>% arrange(desc(Rate))
+```
+## Zadanie 2
+
+Plik albums.csv zawiera następujące dane dotyczące albumów muzycznych:
+•artist_id–dentyfikatorartysty,
+•album_title–tytuł albumu,
+•genre–gatunek muzyczny,
+•year_of_pub–rok publikacji,
+•num_of_tracks–liczba piosnek na płycie,
+•num_of_sales–liczba sprzedanych płyt,
+•rolling_stone_critic–ocena Rolling StoneMagazine,
+•mtv_critic–ocena MTV,
+•music_maniac_critic–ocena Music Maniac.
+Przeprowadź analizę tej próbki stosując dplyr.
+```{r}
+albums <- read.csv('./albums.csv', stringsAsFactors = FALSE)
+str(albums)
+library(dplyr)
+albums %>% filter(num_of_tracks == 10 & year_of_pub >= 2010) %>% head()
+albums %>% select(artist_id, album_title, year_of_pub)
+albums %>% dplyr::select(tidyselect::all_of("id"))
+albums %>% mutate(evaluation = rolling_stone_critic + mtv_critic + music_maniac_critic, .after = music_maniac_critic)
+albums %>% arrange(num_of_sales)
+albums %>%
+  summarise(
+    sales_min = min(num_of_sales),
+    sales_max = max(num_of_sales),
+    sales_avg = mean(num_of_sales)
+  )
+albums %>%
+  group_by(num_of_tracks) %>%
+  tally()
+
+```
+## Zadanie 3
+Plik suicides.rds zawiera informacje na temat liczby popełnionych samobójstw w
+101 krajach świata na przestrzeni lat 1985 – 2016 z uwzględnieniem podziału na płeć oraz grupę wiekową.
+
+```{r}
+suicides <- readRDS('./suicides.rds')
+saveRDS(suicides, file = './suicides.rds')
+str(suicides)
+```
+1. Wskaż pięć krajów w których na przestrzeni lat 1985 – 2016 popełniono najwięcej / najmniej samobójstw na 100k mieszkańców.
+```{r}
+y_85_16 <- suicides %>% filter(year >= 1985 & year <= 2016)
+min_sui_y_85_16 <- y_85_16 %>% arrange(suicides.100k.pop) %>% head(min_sui_y_85_16, n = 5)
+print(min_sui_y_85_16)
+max_sui_y_85_16 <- y_85_16 %>% arrange(desc(suicides.100k.pop)) %>% head(max_sui_y_85_16, n = 5)
+print(max_sui_y_85_16)
+```
+
+2. Dla każdego roku badania wyznacz łączną liczbę samobójstw popełnionych na 100k mieszkańców na świecie.
+```{r}
+sum_sui100kpop_year <- suicides %>%
+  group_by(year) %>%
+  summarise(suicides.100k.pop = sum(suicides.100k.pop))
+print(sum_sui100kpop_year)
+```
+
+3. Ustal łączną liczbę samobójstw popełnionych na 100k mieszkańców na przestrzeni całej próby w podziale na płeć oraz wiek.
+```{r}
+sum_sui100kpop_sex_age <- suicides %>%
+  group_by(sex, age) %>%
+  summarise(suicides.100k.pop = sum(suicides.100k.pop))
+print(sum_sui100kpop_sex_age)
+```
+
+4. Dla każdego roku badania wskaż trzy kraje, w których odnotowano największą liczbę samobójstw.
+```{r}
+arrsuicide_no <- suicides %>% arrange(desc(suicides_no))
+max_sui_3c <- arrsuicide_no %>%
+  group_by(year) %>% 
+  summarise(suicides_no_max = nth(country, 3))
+print(max_sui_3c)
+```
+
+
+5. Znajdź kraj w którym nastąpiła największa / najmniejsza zmiana pomiędzy liczbą samobójstw na 100k mieszkańców w najgorszym roku (najwięcej samobójstw) i najlepszym roku (najmniej samobójstw).
+
+```{r}
+change <- suicides %>%
+  group_by(country) %>%
+  summarise(difference = (max(suicides_no) - min(suicides_no)))
+
+max_change <- max(change$difference)
+max_change_country <- as.character(change$country[change$difference == max_change])
+cat('Najwieksza zmiana:', max_change, max_change_country, '\n')
+min_change <- min(change$difference)
+min_change_country <- as.character(change$country[change$difference == min_change])
+cat('Najmniejsza zmiana:', min_change, min_change_country[1], ',', min_change_country[2])
+```
+
+## Zadanie 4
+Katalog gapps zawiera trzy pliki z informacji o aplikacjach z Google Play Store:
+• free_apps.rds – ocenione aplikacje darmowe,
+• paid_apps.rds – ocenione aplikacje płatne,
+• norat_apps.rds – nie ocenione aplikacje płatne i darmowe.
+
+Połącz ten dane w jeden wspólny plik i zapisz wynik pracy w postaci pliku CSV.
+
+```{r}
+free_apps <- readRDS('gapps/free_apps.rds')
+saveRDS(free_apps, file = 'gapps/free_apps.rds')
+str(free_apps)
+paid_apps <- readRDS('gapps/paid_apps.rds')
+saveRDS(paid_apps, file = 'gapps/paid_apps.rds')
+str(paid_apps)
+norat_apps <- readRDS('gapps/norat_apps.rds')
+saveRDS(norat_apps, file = 'gapps/norat_apps.rds')
+str(norat_apps)
+```
+
+```{r}
+all_apps <- bind_rows(free_apps, paid_apps, norat_apps)
+write.csv(
+  all_apps, file = 'gapps/all_apps.csv',
+  na = '[NA]'
+)
+```
+
+## Zadanie 5
+Katalog movies zawiera trzy pliki dotyczące filmów:
+• movies.rds – podstawowe dane na temat filmu,
+• ratings.rds – jednostkowe oceny jakie filmom przyznali użytkownicy,
+• tags.rds – tagi jakie do poszczególnych filmów przypisali użytkownicy.
+Wykonaj następujące zadania.
+```{r}
+movies <- readRDS('movies/movies.rds')
+saveRDS(movies, file = 'movies/movies.rds')
+str(movies)
+ratings <- readRDS('movies/ratings.rds')
+saveRDS(ratings, file = 'movies/ratings.rds')
+str(ratings)
+tags <- readRDS('movies/tags.rds')
+saveRDS(tags, file = 'movies/tags.rds')
+str(tags)
+movies2 <- movies %>% full_join(ratings, by = "movieId")
+mrt <- movies2 %>% full_join(tags, by = "movieId")
+```
+1. Wyznacz średnie oceny filmów oraz liczbę osób, które oceniły każdy film i dołącz te informacje do informacji na temat filmu.
+```{r}
+z5.1 <- mrt %>% 
+  group_by(title, movieId)%>%
+  summarise(
+    mean_rating = mean(rating),
+    num_users = sum(userId.x)
+    )
+print(z5.1)
+mrt1 <- mrt %>% full_join(z5.1, by = "movieId")
+print(mrt1)
+```
+
+
+2. Ustal czas dodania ostatniego tagu do każego z filmów i dodaj tą informację do informacji na temat filmu.
+```{r}
+str(mrt1)
+mrt1$timestamp <- as.Date(as.POSIXct(mrt1$timestamp.x, origin="1970-01-01"))
+maxtime <- mrt1 %>%
+  group_by(title.x, movieId) %>%
+  summarise(max_timestamp = max(timestamp))
+
+mrt2 <- mrt1 %>% full_join(maxtime, by = "movieId")
+print(mrt2)
+```
+
+
+3. Dokonaj agregacji wszystkich różnych tagów dotyczących filmu, a następnie dołącz je o informacji na temat filmu.
+```{r}
+addtag <- mrt2 %>% 
+  group_by(tag) %>%
+  tally()
+  
+mrt_final <- mrt2 %>% full_join(addtag, by = "tag")
+print(mrt_final)
+```
